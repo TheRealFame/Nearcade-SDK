@@ -6,15 +6,15 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-  release:
-    types: [published]
+    inputs:
+      version:
+        description: Release version (e.g. 0.2.0)
+        required: false
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  SDK_VERSION: 0.2.0
 
 jobs:
   # ── Build per platform ──────────────────────────────────────────────────
@@ -28,18 +28,14 @@ jobs:
             arch: linux-x86_64
             sdk_lib: libnearcade.so
             signaling: ON
-            gd_suffix: linux.x86_64.so
           - os: windows-latest
             arch: windows-x86_64
             sdk_lib: Release/nearcade.dll
-            sdk_implib: Release/nearcade.lib
             signaling: OFF
-            gd_suffix: windows.x86_64.dll
           - os: macos-latest
             arch: macos-universal
             sdk_lib: libnearcade.dylib
             signaling: OFF
-            gd_suffix: macos.dylib
 
     runs-on: ${{ matrix.os }}
 
@@ -85,7 +81,6 @@ jobs:
         run: |
           mkdir -p staging/lib staging/include staging/godot
 
-          # SDK shared library + import lib (Windows)
           if [ -f "build_sdk/libnearcade.so" ]; then
             cp build_sdk/libnearcade.so staging/lib/
           elif [ -f "build_sdk/libnearcade.dylib" ]; then
@@ -97,8 +92,8 @@ jobs:
 
           cp include/nearcade.h staging/include/
 
-          if ls build_godot/demo/bin/* 2>/dev/null; then
-            cp build_godot/demo/bin/* staging/godot/
+          if ls build_godot/demo/addons/nearcade/bin/* 2>/dev/null; then
+            cp build_godot/demo/addons/nearcade/bin/* staging/godot/
           fi
 
       - name: Upload SDK (${{ matrix.arch }})
@@ -108,23 +103,39 @@ jobs:
           path: staging/
           if-no-files-found: error
 
-  # ── Package release zips ──────────────────────────────────────────────
-  package:
+  # ── Package + Create Release ───────────────────────────────────────────
+  release:
     needs: build
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
 
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "tag=v${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "ver=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VER=$(grep 'project(nearcade VERSION' CMakeLists.txt | sed 's/.*VERSION \([0-9.]*\).*/\1/')
+            echo "tag=v${VER}" >> $GITHUB_OUTPUT
+            echo "ver=${VER}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create per-platform SDK zips
         shell: bash
         run: |
+          ver="${{ steps.version.outputs.ver }}"
           for dir in sdk-*/; do
             arch="${dir#sdk-}"
             arch="${arch%/}"
-            pkg="nearcade-sdk-v${SDK_VERSION}-${arch}"
+            pkg="nearcade-sdk-v${ver}-${arch}"
             mkdir -p "${pkg}/lib" "${pkg}/include"
             cp "$dir/lib/"* "${pkg}/lib/"
             cp "$dir/include/"* "${pkg}/include/"
@@ -134,35 +145,41 @@ jobs:
       - name: Create Godot addon zip (all platforms)
         shell: bash
         run: |
-          addon_dir="nearcade-godot-v${SDK_VERSION}/addons/nearcade"
+          ver="${{ steps.version.outputs.ver }}"
+          addon_dir="nearcade-godot-v${ver}/addons/nearcade"
           mkdir -p "${addon_dir}/bin"
 
-          # Copy .gdextension manifest
           cp bindings/godot/demo/addons/nearcade/nearcade.gdextension "${addon_dir}/"
 
-          # Merge GDExtension binaries + SDK libs from all platforms
           for dir in sdk-*/; do
-            # GDExtension binary
             if ls "$dir/godot/"* 2>/dev/null; then
               cp "$dir/godot/"* "${addon_dir}/bin/"
             fi
-            # SDK shared library (one per platform, different names)
             cp "$dir/lib/"* "${addon_dir}/bin/" 2>/dev/null || true
           done
 
-          zip -r "nearcade-godot-v${SDK_VERSION}.zip" "nearcade-godot-v${SDK_VERSION}"
+          zip -r "nearcade-godot-v${ver}.zip" "nearcade-godot-v${ver}"
 
-      - name: Upload zips as workflow artifacts (manual builds)
-        uses: actions/upload-artifact@v4
-        with:
-          name: nearcade-release-zips
-          path: nearcade-*.zip
-
-      - name: Upload to GitHub Releases tab (release trigger only)
-        if: github.event_name == 'release'
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          body: |
+            ## Nearcade SDK ${{ steps.version.outputs.tag }}
+
+            Automated build. See [CHANGES](../../blob/${{ steps.version.outputs.tag }}/README.md) for details.
+
+            ### Contents
+
+            - **nearcade-sdk-v${{ steps.version.outputs.ver }}-linux-x86_64.zip** — C headers + libnearcade.so
+            - **nearcade-sdk-v${{ steps.version.outputs.ver }}-windows-x86_64.zip** — C headers + nearcade.dll + .lib
+            - **nearcade-sdk-v${{ steps.version.outputs.ver }}-macos-universal.zip** — C headers + libnearcade.dylib
+            - **nearcade-godot-v${{ steps.version.outputs.ver }}.zip** — Godot 4.6 addon (all platforms)
           files: |
             nearcade-sdk-v*.zip
             nearcade-godot-v*.zip
           fail_on_unmatched_files: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

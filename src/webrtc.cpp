@@ -10,7 +10,7 @@
 
 /* Replicate log macros here because nearcade_internal.h uses C11 atomics
    incompatible with C++17's <stdatomic.h>.  */
-extern int g_loglevel;
+extern "C" int g_loglevel;
 enum { LOG_L_ERROR=1, LOG_L_WARN=2, LOG_L_INFO=3, LOG_L_DEBUG=4, LOG_L_TRACE=5 };
 
 #define LOG(level, fmt, ...) do { \

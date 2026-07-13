@@ -143,20 +143,20 @@ static inline int slot_claim(const char *viewer_id, nearcade_ctrl_type ctrl)
         return -1;
     }
     slot_manager *sm = &g_state.slots;
-    pthread_mutex_lock(&sm->lock);
+    nearcade_mutex_lock(&sm->lock);
 
     for (int i = 0; i < MAX_SLOTS; i++) {
         if (sm->slot_map[i] == 0) {
             sm->slot_map[i] = 1;
             strncpy(sm->slot_viewers[i], viewer_id, NEARCADE_VIEWER_ID_LEN - 1);
             LOG_DEBUG("slot_claim: viewer=%s slot=%d", viewer_id, i);
-            pthread_mutex_unlock(&sm->lock);
+            nearcade_mutex_unlock(&sm->lock);
             return i;
         }
     }
 
     LOG_WARN("slot_claim: no free slots for viewer=%s", viewer_id);
-    pthread_mutex_unlock(&sm->lock);
+    nearcade_mutex_unlock(&sm->lock);
     return -1;
 }
 
@@ -167,16 +167,16 @@ static inline void slot_release(int slot)
         return;
     }
     slot_manager *sm = &g_state.slots;
-    pthread_mutex_lock(&sm->lock);
+    nearcade_mutex_lock(&sm->lock);
     if (sm->slot_map[slot] == 0) {
         LOG_WARN("slot_release: slot=%d already free", slot);
-        pthread_mutex_unlock(&sm->lock);
+        nearcade_mutex_unlock(&sm->lock);
         return;
     }
     LOG_DEBUG("slot_release: slot=%d viewer=%s", slot, sm->slot_viewers[slot]);
     sm->slot_map[slot] = 0;
     memset(sm->slot_viewers[slot], 0, NEARCADE_VIEWER_ID_LEN);
-    pthread_mutex_unlock(&sm->lock);
+    nearcade_mutex_unlock(&sm->lock);
 }
 
 static inline const char *ctrl_name(nearcade_ctrl_type ctrl)

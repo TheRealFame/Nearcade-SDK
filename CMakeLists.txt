@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
 project(nearcade VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)

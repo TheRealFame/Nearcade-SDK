@@ -53,24 +53,14 @@ jobs:
         run: brew install libwebsockets
 
       - name: Configure SDK
-        run: |
-          cmake -B build_sdk \
-            -DNEARCADE_BUILD_SHARED=ON \
-            -DNEARCADE_BUILD_SIGNALING=${{ matrix.signaling }} \
-            -DNEARCADE_BUILD_WEBRTC=ON \
-            -DNEARCADE_BUILD_TESTS=OFF \
-            -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build_sdk -DNEARCADE_BUILD_SHARED=ON -DNEARCADE_BUILD_SIGNALING=${{ matrix.signaling }} -DNEARCADE_BUILD_WEBRTC=ON -DNEARCADE_BUILD_TESTS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release
 
       - name: Build SDK
         run: cmake --build build_sdk --config Release -j4
 
       - name: Configure GDExtension
         continue-on-error: true
-        run: |
-          cmake -B build_godot \
-            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build_sdk \
-            -DCMAKE_BUILD_TYPE=Release \
-            bindings/godot
+        run: cmake -B build_godot -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build_sdk -DCMAKE_BUILD_TYPE=Release bindings/godot
 
       - name: Build GDExtension
         continue-on-error: true

@@ -281,6 +281,8 @@ void signaling_get_url(char *buf, size_t buf_size)
     LOG_TRACE("signaling_get_url: %s", buf);
 }
 
+static int send_to_lws(struct lws *wsi, const char *data);
+
 int signaling_send_to_viewer(const char *viewer_id, const char *data)
 {
     if (!viewer_id || !data) return -1;

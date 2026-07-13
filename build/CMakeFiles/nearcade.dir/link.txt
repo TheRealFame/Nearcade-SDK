@@ -1,0 +1,2 @@
+/usr/bin/ar qc libnearcade.a CMakeFiles/nearcade.dir/src/nearcade.c.o CMakeFiles/nearcade.dir/src/capture.c.o CMakeFiles/nearcade.dir/src/input_linux.c.o
+/usr/bin/ranlib libnearcade.a

@@ -1,0 +1,1 @@
+/usr/bin/cc -Wl,--dependency-file=CMakeFiles/nearcade_test.dir/link.d CMakeFiles/nearcade_test.dir/test/test_basic.c.o -o nearcade_test  libnearcade.a

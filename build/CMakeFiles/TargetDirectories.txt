@@ -1,0 +1,10 @@
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/nearcade.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/nearcade_shared.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/nearcade_test.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/test.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/edit_cache.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/rebuild_cache.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/list_install_components.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/install.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/install/local.dir
+/home/fame/Documents/Nearcade-SDK/build/CMakeFiles/install/strip.dir

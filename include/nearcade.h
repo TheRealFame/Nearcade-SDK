@@ -23,7 +23,7 @@ extern "C" {
 #endif
 
 #define NEARCADE_VERSION_MAJOR 0
-#define NEARCADE_VERSION_MINOR 1
+#define NEARCADE_VERSION_MINOR 2
 #define NEARCADE_VERSION_PATCH 0
 
 #define NEARCADE_MAX_VIEWERS     64
@@ -42,8 +42,6 @@ extern "C" {
 #define NEARCADE_BTN_LS     (1<<10)
 #define NEARCADE_BTN_RS     (1<<11)
 #define NEARCADE_BTN_GUIDE  (1<<16)
-
-
 
 typedef struct nearcade_config {
     int      port;
@@ -102,7 +100,14 @@ typedef enum {
     NEARCADE_EVENT_RUMBLE         = 3,
     NEARCADE_EVENT_SIGNALING      = 4,
     NEARCADE_EVENT_ERROR          = 5,
+    NEARCADE_EVENT_STREAMING      = 6,
 } nearcade_event_type;
+
+typedef enum {
+    NEARCADE_PIX_FMT_RGBA  = 0,
+    NEARCADE_PIX_FMT_NV12  = 1,
+    NEARCADE_PIX_FMT_I420  = 2,
+} nearcade_pixel_format;
 
 #pragma pack(push, 1)
 typedef struct nearcade_gamepad_packet {
@@ -153,34 +158,54 @@ typedef struct nearcade_event {
             int  code;
             char message[256];
         } error;
+
+        struct {
+            int  viewer_count;
+        } streaming;
     } data;
 } nearcade_event;
 
 typedef void (*nearcade_event_callback)(const nearcade_event *event, void *userdata);
 
+/* ── Lifecycle ─────────────────────────────────────────────────────────── */
 NEARCADE_API int nearcade_init(const nearcade_config *config);
-NEARCADE_API int nearcade_start_capture(void);
-NEARCADE_API int nearcade_stop_capture(void);
+NEARCADE_API int nearcade_start_streaming(void);
+NEARCADE_API int nearcade_stop_streaming(void);
 NEARCADE_API int nearcade_poll_events(int timeout_ms);
 NEARCADE_API void nearcade_shutdown(void);
 
-NEARCADE_API int nearcade_set_event_callback(nearcade_event_callback cb, void *userdata);
-NEARCADE_API int nearcade_get_signaling_url(char *buf, size_t buf_size);
-NEARCADE_API int nearcade_get_lan_ip(char *buf, size_t buf_size);
-NEARCADE_API int nearcade_get_pin(char *buf, size_t buf_size);
-NEARCADE_API int nearcade_regenerate_pin(void);
+/* ── Video (engine-pushed frames — the primary path) ───────────────────── */
+NEARCADE_API int nearcade_send_h264(const uint8_t *data, size_t size, int64_t timestamp_us);
+NEARCADE_API int nearcade_send_frame(const uint8_t *data, int width, int height,
+                                     nearcade_pixel_format fmt, int64_t timestamp_us);
 
+/* ── Legacy capture (convenience — FFmpeg screen capture) ──────────────── */
+NEARCADE_API int nearcade_start_capture(void);
+NEARCADE_API int nearcade_stop_capture(void);
+
+/* ── Input injection ───────────────────────────────────────────────────── */
 NEARCADE_API int nearcade_submit_gamepad(const nearcade_gamepad_packet *packet);
 NEARCADE_API int nearcade_submit_kbm(const char *viewer_id, const char *event_type,
                                      const char *key, int dx, int dy);
 NEARCADE_API int nearcade_flush_slot(uint8_t slot);
 NEARCADE_API int nearcade_disconnect_viewer(const char *viewer_id);
 
+/* ── Viewer settings ───────────────────────────────────────────────────── */
 NEARCADE_API int nearcade_set_viewer_input_mode(const char *viewer_id,
                                                 nearcade_input_mode mode);
 NEARCADE_API int nearcade_set_controller_type(const char *viewer_id,
                                               nearcade_ctrl_type ctrl);
 
+/* ── Event system ──────────────────────────────────────────────────────── */
+NEARCADE_API int nearcade_set_event_callback(nearcade_event_callback cb, void *userdata);
+
+/* ── Query ─────────────────────────────────────────────────────────────── */
+NEARCADE_API int nearcade_get_signaling_url(char *buf, size_t buf_size);
+NEARCADE_API int nearcade_get_lan_ip(char *buf, size_t buf_size);
+NEARCADE_API int nearcade_get_pin(char *buf, size_t buf_size);
+NEARCADE_API int nearcade_regenerate_pin(void);
+
+/* ── Deprecated signaling relay (no-op — WebRTC is internal now) ───────── */
 NEARCADE_API int nearcade_send_offer(const char *viewer_id, const char *sdp);
 NEARCADE_API int nearcade_send_answer(const char *viewer_id, const char *sdp);
 NEARCADE_API int nearcade_send_ice_candidate(const char *viewer_id,

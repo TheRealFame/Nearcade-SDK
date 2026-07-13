@@ -1,0 +1,161 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main, engine-integrations]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SDK_VERSION: 0.2.0
+
+jobs:
+  # ── Build per platform ──────────────────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            arch: linux-x86_64
+            sdk_lib: libnearcade.so
+            signaling: ON
+            gd_suffix: linux.x86_64.so
+          - os: windows-latest
+            arch: windows-x86_64
+            sdk_lib: Release/nearcade.dll
+            sdk_implib: Release/nearcade.lib
+            signaling: OFF
+            gd_suffix: windows.x86_64.dll
+          - os: macos-latest
+            arch: macos-universal
+            sdk_lib: libnearcade.dylib
+            signaling: OFF
+            gd_suffix: macos.dylib
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libssl-dev libwebsockets-dev
+
+      - name: Install deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libwebsockets
+
+      - name: Configure SDK
+        run: |
+          cmake -B build_sdk \
+            -DNEARCADE_BUILD_SHARED=ON \
+            -DNEARCADE_BUILD_SIGNALING=${{ matrix.signaling }} \
+            -DNEARCADE_BUILD_WEBRTC=ON \
+            -DNEARCADE_BUILD_TESTS=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build SDK
+        run: cmake --build build_sdk --config Release -j4
+
+      - name: Configure GDExtension
+        continue-on-error: true
+        run: |
+          cmake -B build_godot \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build_sdk \
+            -DCMAKE_BUILD_TYPE=Release \
+            bindings/godot
+
+      - name: Build GDExtension
+        continue-on-error: true
+        run: cmake --build build_godot --config Release -j4
+
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          mkdir -p staging/lib staging/include staging/godot
+
+          # SDK shared library + import lib (Windows)
+          if [ -f "build_sdk/libnearcade.so" ]; then
+            cp build_sdk/libnearcade.so staging/lib/
+          elif [ -f "build_sdk/libnearcade.dylib" ]; then
+            cp build_sdk/libnearcade.dylib staging/lib/
+          elif [ -f "build_sdk/Release/nearcade.dll" ]; then
+            cp build_sdk/Release/nearcade.dll staging/lib/
+            cp build_sdk/Release/nearcade.lib  staging/lib/ 2>/dev/null || true
+          fi
+
+          cp include/nearcade.h staging/include/
+
+          if ls build_godot/demo/bin/* 2>/dev/null; then
+            cp build_godot/demo/bin/* staging/godot/
+          fi
+
+      - name: Upload SDK (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-${{ matrix.arch }}
+          path: staging/
+          if-no-files-found: error
+
+  # ── Package release zips ──────────────────────────────────────────────
+  package:
+    needs: build
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+
+      - name: Create per-platform SDK zips
+        shell: bash
+        run: |
+          for dir in sdk-*/; do
+            arch="${dir#sdk-}"
+            arch="${arch%/}"
+            pkg="nearcade-sdk-v${SDK_VERSION}-${arch}"
+            mkdir -p "${pkg}/lib" "${pkg}/include"
+            cp "$dir/lib/"* "${pkg}/lib/"
+            cp "$dir/include/"* "${pkg}/include/"
+            zip -r "${pkg}.zip" "${pkg}"
+          done
+
+      - name: Create Godot addon zip (all platforms)
+        shell: bash
+        run: |
+          addon_dir="nearcade-godot-v${SDK_VERSION}/addons/nearcade"
+          mkdir -p "${addon_dir}/bin"
+
+          # Copy .gdextension manifest
+          cp bindings/godot/nearcade.gdextension "${addon_dir}/"
+
+          # Merge GDExtension binaries + SDK libs from all platforms
+          for dir in sdk-*/; do
+            # GDExtension binary
+            if ls "$dir/godot/"* 2>/dev/null; then
+              cp "$dir/godot/"* "${addon_dir}/bin/"
+            fi
+            # SDK shared library (one per platform, different names)
+            cp "$dir/lib/"* "${addon_dir}/bin/" 2>/dev/null || true
+          done
+
+          zip -r "nearcade-godot-v${SDK_VERSION}.zip" "nearcade-godot-v${SDK_VERSION}"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            nearcade-sdk-v*.zip
+            nearcade-godot-v*.zip
+          fail_on_unmatched_files: false

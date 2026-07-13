@@ -25,8 +25,12 @@ void NearcadeSDK::_event_callback(const nearcade_event *ev, void *userdata) {
 
 void NearcadeSDK::_bind_methods() {
     ClassDB::bind_method(D_METHOD("init", "config"), &NearcadeSDK::init);
+    ClassDB::bind_method(D_METHOD("start_streaming"), &NearcadeSDK::start_streaming);
+    ClassDB::bind_method(D_METHOD("stop_streaming"), &NearcadeSDK::stop_streaming);
     ClassDB::bind_method(D_METHOD("start_capture"), &NearcadeSDK::start_capture);
     ClassDB::bind_method(D_METHOD("stop_capture"), &NearcadeSDK::stop_capture);
+    ClassDB::bind_method(D_METHOD("send_h264", "data", "timestamp_us"), &NearcadeSDK::send_h264);
+    ClassDB::bind_method(D_METHOD("send_frame", "data", "width", "height", "fmt", "timestamp_us"), &NearcadeSDK::send_frame);
     ClassDB::bind_method(D_METHOD("shutdown"), &NearcadeSDK::shutdown);
 
     ClassDB::bind_method(D_METHOD("submit_gamepad", "packet"), &NearcadeSDK::submit_gamepad);
@@ -46,6 +50,7 @@ void NearcadeSDK::_bind_methods() {
     ADD_SIGNAL(MethodInfo("input_packet", PropertyInfo(Variant::DICTIONARY, "packet"), PropertyInfo(Variant::STRING, "viewer_id")));
     ADD_SIGNAL(MethodInfo("signaling_message", PropertyInfo(Variant::STRING, "viewer_id"), PropertyInfo(Variant::STRING, "data")));
     ADD_SIGNAL(MethodInfo("error_code", PropertyInfo(Variant::INT, "code"), PropertyInfo(Variant::STRING, "message")));
+    ADD_SIGNAL(MethodInfo("streaming_started", PropertyInfo(Variant::INT, "viewer_count")));
 }
 
 Dictionary NearcadeSDK::init(const Dictionary &config) {
@@ -71,12 +76,28 @@ Dictionary NearcadeSDK::init(const Dictionary &config) {
     return result;
 }
 
+int NearcadeSDK::start_streaming() {
+    return nearcade_start_streaming();
+}
+
+int NearcadeSDK::stop_streaming() {
+    return nearcade_stop_streaming();
+}
+
 int NearcadeSDK::start_capture() {
     return nearcade_start_capture();
 }
 
 int NearcadeSDK::stop_capture() {
     return nearcade_stop_capture();
+}
+
+int NearcadeSDK::send_h264(const PackedByteArray &data, int64_t timestamp_us) {
+    return nearcade_send_h264(data.ptr(), data.size(), timestamp_us);
+}
+
+int NearcadeSDK::send_frame(const PackedByteArray &data, int width, int height, int fmt, int64_t timestamp_us) {
+    return nearcade_send_frame(data.ptr(), width, height, (nearcade_pixel_format)fmt, timestamp_us);
 }
 
 void NearcadeSDK::shutdown() {
@@ -189,6 +210,10 @@ Dictionary NearcadeSDK::poll_event() {
             d["code"] = ev.data.error.code;
             d["message"] = String(ev.data.error.message);
             emit_signal("error_code", d["code"], d["message"]);
+            break;
+        case NEARCADE_EVENT_STREAMING:
+            d["viewer_count"] = ev.data.streaming.viewer_count;
+            emit_signal("streaming_started", d["viewer_count"]);
             break;
         default:
             break;

@@ -8,9 +8,10 @@ extends Control
 @onready var log_output = $VBoxContainer/LogOutput
 
 var sdk = null
+var video_timer = 0.0
 
 func _ready():
-    log("Nearcade Godot Demo v0.1.0")
+    log("Nearcade Godot Demo v0.2.0")
     log("Initializing SDK...")
 
     sdk = NearcadeSDK.new()
@@ -37,11 +38,11 @@ func _ready():
     sdk.viewer_left.connect(_on_viewer_left)
     sdk.signaling_message.connect(_on_signaling)
     sdk.error_code.connect(_on_error)
+    sdk.streaming_started.connect(_on_streaming_started)
 
 
 func _process(delta):
     if sdk:
-        # Flush queued events from the C callback thread
         var ev = sdk.poll_event()
         while not ev.is_empty():
             match ev["type"]:
@@ -49,7 +50,16 @@ func _process(delta):
                 1: log("Viewer left: " + ev.get("viewer_id", "?"))
                 4: log("Signaling: " + str(ev.get("data", "")).left(80))
                 5: log("Error: " + str(ev.get("code", -1)) + " " + ev.get("message", ""))
+                6: log("Streaming started: " + str(ev.get("viewer_count", 0)) + " viewers")
             ev = sdk.poll_event()
+
+        # Push a dummy H.264 NAL every 60 frames (simulating engine video)
+        video_timer += delta
+        if video_timer > 0.5 and start_btn.text == "Streaming":
+            # In a real game, you'd encode a real frame here
+            var dummy_h264 = PackedByteArray([0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1e])
+            sdk.send_h264(dummy_h264, Time.get_ticks_usec())
+            video_timer = 0.0
 
 
 func _on_viewer_joined(viewer_id, name):
@@ -68,18 +78,28 @@ func _on_error(code, message):
     log("[signal] Error " + str(code) + ": " + message)
 
 
+func _on_streaming_started(viewer_count):
+    log("[signal] Streaming active, viewers: " + str(viewer_count))
+
+
 func _on_start_pressed():
     if sdk:
-        var rc = sdk.start_capture()
-        log("start_capture: " + str(rc))
-        status_label.text = "Streaming" if rc == 0 else "Failed (" + str(rc) + ")"
+        var rc = sdk.start_streaming()
+        log("start_streaming: " + str(rc))
+        if rc == 0:
+            status_label.text = "Streaming"
+            start_btn.text = "Streaming"
+        else:
+            status_label.text = "Failed (" + str(rc) + ")"
 
 
 func _on_stop_pressed():
     if sdk:
+        sdk.stop_streaming()
         sdk.stop_capture()
-        log("Capture stopped")
+        log("Streaming stopped")
         status_label.text = "Ready"
+        start_btn.text = "Start"
 
 
 func _on_submit_pressed():
@@ -87,10 +107,10 @@ func _on_submit_pressed():
         var packet = {
             "type": 0x01,
             "slot": 0,
-            "lx": 0, "ly": -32767,  # Left stick up
+            "lx": 0, "ly": -32767,
             "rx": 0, "ry": 0,
             "lt": 0, "rt": 0,
-            "buttons": 1,  # A button
+            "buttons": 1,
             "hx": 0, "hy": 0,
         }
         var rc = sdk.submit_gamepad(packet)

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(nearcade VERSION 0.1.0 LANGUAGES C)
+project(nearcade VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -7,7 +7,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(NEARCADE_BUILD_SHARED "Build shared library" ON)
 option(NEARCADE_BUILD_SIGNALING "Build embedded WebSocket signaling" ON)
-option(NEARCADE_BUILD_TESTS "Build tests" ON)
+option(NEARCADE_BUILD_WEBRTC   "Build embedded WebRTC via libdatachannel" ON)
+option(NEARCADE_BUILD_TESTS    "Build tests" ON)
 
 find_package(Threads REQUIRED)
 
@@ -34,6 +35,35 @@ if(NEARCADE_BUILD_SIGNALING)
     endif()
 endif()
 
+# ── libdatachannel for WebRTC ──────────────────────────────────────────────────
+if(NEARCADE_BUILD_WEBRTC)
+    include(FetchContent)
+    set(OPENSSL_USE_STATIC_LIBS OFF)
+
+    FetchContent_Declare(
+        libdatachannel
+        GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
+        GIT_TAG v0.20.0
+    )
+
+    set(USE_GNUTLS OFF CACHE BOOL "" FORCE)
+    set(USE_NICE OFF CACHE BOOL "" FORCE)
+    set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
+    set(NO_MEDIA OFF CACHE BOOL "" FORCE)
+    set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
+    set(NO_TESTS ON CACHE BOOL "" FORCE)
+
+    FetchContent_GetProperties(libdatachannel)
+    if(NOT libdatachannel_POPULATED)
+        FetchContent_Populate(libdatachannel)
+        add_subdirectory(${libdatachannel_SOURCE_DIR} ${libdatachannel_BINARY_DIR})
+    endif()
+
+    set(LIBDATACHANNEL_FOUND TRUE)
+    add_definitions(-DNEARCADE_HAS_WEBRTC)
+    message(STATUS "libdatachannel: FetchContent from ${libdatachannel_SOURCE_DIR}")
+endif()
+
 # ── Source files ────────────────────────────────────────────────────────────────
 set(NEARCADE_SOURCES
     src/nearcade.c
@@ -44,7 +74,11 @@ if(NEARCADE_BUILD_SIGNALING)
     list(APPEND NEARCADE_SOURCES src/signaling.c)
 endif()
 
-# Platform-specific input backend + generic input dispatcher
+if(NEARCADE_BUILD_WEBRTC)
+    list(APPEND NEARCADE_SOURCES src/webrtc.cpp)
+endif()
+
+# Platform-specific input backend
 if(WIN32)
     list(APPEND NEARCADE_SOURCES src/input_win.c)
 elseif(APPLE)
@@ -59,8 +93,12 @@ target_include_directories(nearcade PUBLIC include PRIVATE src)
 target_link_libraries(nearcade PRIVATE Threads::Threads)
 
 if(NEARCADE_BUILD_SIGNALING)
-    target_link_libraries(nearcade PRIVATE ${LIBWEBSOCKETS_LIBRARIES})
     target_include_directories(nearcade PRIVATE ${LIBWEBSOCKETS_INCLUDE_DIRS})
+    target_link_libraries(nearcade PRIVATE ${LIBWEBSOCKETS_LIBRARIES})
+endif()
+
+if(NEARCADE_BUILD_WEBRTC)
+    target_link_libraries(nearcade PRIVATE datachannel)
 endif()
 
 install(TARGETS nearcade ARCHIVE DESTINATION lib)
@@ -79,8 +117,12 @@ if(NEARCADE_BUILD_SHARED)
     target_link_libraries(nearcade_shared PRIVATE Threads::Threads)
 
     if(NEARCADE_BUILD_SIGNALING)
-        target_link_libraries(nearcade_shared PRIVATE ${LIBWEBSOCKETS_LIBRARIES})
         target_include_directories(nearcade_shared PRIVATE ${LIBWEBSOCKETS_INCLUDE_DIRS})
+        target_link_libraries(nearcade_shared PRIVATE ${LIBWEBSOCKETS_LIBRARIES})
+    endif()
+
+    if(NEARCADE_BUILD_WEBRTC)
+        target_link_libraries(nearcade_shared PRIVATE datachannel)
     endif()
 
     install(TARGETS nearcade_shared
@@ -95,6 +137,11 @@ if(NEARCADE_BUILD_TESTS)
     add_executable(nearcade_test test/test_basic.c)
     target_include_directories(nearcade_test PRIVATE include)
     target_link_libraries(nearcade_test PRIVATE nearcade Threads::Threads)
+
+    if(NEARCADE_BUILD_WEBRTC)
+        target_link_libraries(nearcade_test PRIVATE datachannel)
+    endif()
+
     add_test(NAME nearcade_basic COMMAND nearcade_test)
     set_tests_properties(nearcade_basic PROPERTIES
         ENVIRONMENT "NEARCADE_LOG_LEVEL=debug"

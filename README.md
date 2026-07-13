@@ -1,30 +1,55 @@
 # Nearcade Streaming SDK
 
-Standalone C ABI shared library for hosting WebRTC peer-to-peer video/audio streams with remote gamepad input relay.
+Standalone C ABI shared library for hosting **WebRTC P2P** video streams with remote gamepad input relay, designed for **multiplayer game streaming** from any game engine.
+
+**v0.2.0 — WebRTC is now internal. The SDK handles ICE/DTLS/SRTP/SCTP via [libdatachannel](https://github.com/paullouisageneau/libdatachannel). Game engines just push frames and receive input.**
 
 ## Features
 
-- **P2P WebRTC** — media and data flow directly between host and viewer (no relay server)
-- Lightweight **WebSocket signaling server** for SDP/ICE exchange (optional, requires libwebsockets)
-- Host a video/audio stream from a capture source (FFmpeg on Linux)
-- Relay gamepad input from multiple remote viewers back to the host
-- Flat C API (`extern "C"`): `nearcade_init()`, `nearcade_start_capture()`, etc.
-- Platform backends: Linux (uinput), Windows (ViGEmBus stub), macOS (stub)
-- **No tunnels** — the SDK does not bundle cloudflared/zrok/VPN. The user provides their own connectivity (LAN, Tailscale, port-forward, or their own tunnel)
-- Runtime log control via `NEARCADE_LOG_LEVEL` env var (trace/debug/info/warn/error/none)
+- **Internal WebRTC stack** — no browser/engine WebRTC API needed. SDK handles all P2P negotiation internally via libdatachannel.
+- Lightweight **WebSocket signaling server** for viewer discovery (optional, libwebsockets)
+- **Push rendered frames from your game engine** — not a screen grabber. Engines call `nearcade_send_h264()` every frame with their rendered output.
+- **ViGEmBus on Windows** required (user-installed) with clear error guidance
+- **Platform input injection**: Linux `uinput` (full), Windows `ViGEmBus` (requires install), macOS (stub)
+- Runtime log control via `NEARCADE_LOG_LEVEL` env var
+- **No tunnels** — pure P2P. Users provide their own WAN connectivity (Tailscale, port-forward, etc.)
 
 ## Engine Integrations
 
 | Engine | Status | Path |
-|---|---|---|
+|--------|--------|------|
 | Godot 4.6+ | ✅ Active | [`bindings/godot/`](bindings/godot/) |
 | Unity | ⏳ Coming Soon | [`bindings/unity/`](bindings/unity/) |
 | Unreal | ⏳ Coming Soon | [`bindings/unreal/`](bindings/unreal/) |
 
+## How it Works
+
+```
+GAME ENGINE (your app)          VIEWER (browser)
+      │                               │
+      │── WebSocket (signaling) ─────→│  SDP + ICE handshake
+      │←─────────────────────────────│  (SDK handles internally)
+      │                               │
+      │── WebRTC P2P (direct) ──────→│  H.264 video frames (engine-pushed)
+      │←─────────────────────────────│  Gamepad input (16-byte packets)
+      │                               │
+      ▼                               ▼
+  uinput/ViGEmBus            Browser Gamepad API
+  (input injection)          or keyboard/mouse
+```
+
+The game engine calls `nearcade_send_h264()` each frame with encoded video. The SDK streams it to all connected viewers via WebRTC. Viewer gamepad input arrives via data channel and is injected into the host system.
+
+### Three-lane P2P design
+
+1. **Signaling lane** (WebSocket) — SDP/ICE handshake only. Runs on the embedded server (`ws://HOST:PORT`).
+2. **Media lane** (WebRTC video track) — H.264 frames from engine → viewer. Direct P2P.
+3. **Input lane** (WebRTC data channel) — Viewer gamepad → host. Direct P2P. Injected via uinput/ViGEmBus.
+
 ## Build
 
 ```sh
-cmake -B build
+cmake -B build -DNEARCADE_BUILD_WEBRTC=ON
 cmake --build build
 
 # Run tests
@@ -35,50 +60,78 @@ NEARCADE_LOG_LEVEL=debug ctest --test-dir build
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-DNEARCADE_BUILD_SHARED=ON` | ON | Build shared library (.so/.dylib/.dll) |
-| `-DNEARCADE_BUILD_SIGNALING=ON` | ON | Embedded WebSocket signaling (requires libwebsockets) |
+| `-DNEARCADE_BUILD_SHARED=ON` | ON | Build shared library |
+| `-DNEARCADE_BUILD_SIGNALING=ON` | ON | Embedded WebSocket signaling (libwebsockets) |
+| `-DNEARCADE_BUILD_WEBRTC=ON` | ON | Internal WebRTC via libdatachannel (requires C++17) |
 | `-DNEARCADE_BUILD_TESTS=ON` | ON | Build unit tests |
 
-## How it Works
+## Quick Start (C)
 
-```
-HOST (game/app)                        VIEWER (browser)
-      │                                      │
-      │── WebSocket (signaling) ────────────→│  SDP offer/answer + ICE candidates
-      │←─────────────────────────────────────│  (handled by embedded signaling server)
-      │                                      │
-      │── WebRTC P2P (direct) ─────────────→│  Video/audio stream
-      │←─────────────────────────────────────│  Gamepad/KBM input (16-byte packets)
-      │                                      │
-      ▼                                      ▼
-  uinput virtual gamepad              Browser Gamepad API
-  (Linux) / ViGEmBus (Win)            or keyboard/mouse
+```c
+#include "nearcade.h"
+
+int main() {
+    nearcade_config cfg = NEARCADE_DEFAULT_CONFIG;
+    nearcade_init(&cfg);
+    nearcade_start_streaming();
+
+    // Every frame: send your encoded H.264 video
+    while (streaming) {
+        uint8_t h264_data[] = { /* ... your NAL unit ... */ };
+        nearcade_send_h264(h264_data, sizeof(h264_data), 0);
+    }
+
+    nearcade_stop_streaming();
+    nearcade_shutdown();
+    return 0;
+}
 ```
 
-The WebSocket signaling server only handles the initial handshake. After that, **all media and input flows P2P** — no relay server needed. The SDK does not bundle tunnels; users provide their own connectivity for WAN play (Tailscale, port-forward, cloudflared, etc.).
+## Quick Start (Godot)
+
+```gdscript
+var sdk = NearcadeSDK.new()
+sdk.init({"port": 3000})
+sdk.start_streaming()
+
+func _process(delta):
+    # Push your frame
+    var nals = get_rendered_h264()  # from your encoder
+    sdk.send_h264(nals, Time.get_ticks_usec())
+
+    # Process events
+    var ev = sdk.poll_event()
+    while not ev.is_empty():
+        if ev["type"] == 0:  # viewer joined
+            print("Viewer: " + ev["viewer_id"])
+        ev = sdk.poll_event()
+```
 
 ## API
 
-See `include/nearcade.h` for the full C API.
+See `include/nearcade.h` for the complete C API. Key functions:
 
-```c
-nearcade_config cfg = NEARCADE_DEFAULT_CONFIG;
-nearcade_init(&cfg);
-nearcade_start_capture();
+| Function | Purpose |
+|----------|---------|
+| `nearcade_init()` | Start SDK, signaling, input backends |
+| `nearcade_start_streaming()` | Accept viewer connections |
+| `nearcade_send_h264()` | Push encoded H.264 frame to all viewers |
+| `nearcade_submit_gamepad()` | Inject gamepad state (from viewer input) |
+| `nearcade_set_event_callback()` | Receive viewer join/leave events |
 
-nearcade_gamepad_packet pkt = {0};
-pkt.type = 0x01;
-pkt.ly = -32767;
-pkt.buttons = NEARCADE_BTN_A;
-nearcade_submit_gamepad(&pkt);
+## Platform Input Backends
 
-nearcade_poll_events(0);
-nearcade_shutdown();
-```
+| Platform | Backend | Status |
+|----------|---------|--------|
+| Linux | uinput (kernel) | ✅ Full |
+| Windows | ViGEmBus | ❌ Requires user install |
+| macOS | — | ❌ No HID injection API available |
+
+### Windows ViGEmBus
+
+The Windows backend only works with [ViGEmBus](https://github.com/ViGEm/ViGEmBus/releases) installed. The SDK will log a clear warning and gracefully degrade (input calls become no-ops).
 
 ## Debug Logging
-
-Set `NEARCADE_LOG_LEVEL` environment variable to control verbosity:
 
 ```sh
 NEARCADE_LOG_LEVEL=trace ./my_app    # Everything (file:line)

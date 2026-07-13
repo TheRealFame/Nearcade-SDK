@@ -13,6 +13,12 @@ static pthread_t g_signaling_thread;
 static int g_port = 3000;
 static pthread_mutex_t g_ws_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* Internal routing callbacks — set by orchestrator to wire into webrtc */
+static void (*g_msg_cb)(const char *viewer_id, const char *data, void *ud) = NULL;
+static void *g_msg_cb_ud = NULL;
+static void (*g_viewer_cb)(int viewer_idx, int joined, void *ud) = NULL;
+static void *g_viewer_cb_ud = NULL;
+
 enum protocols {
     PROTOCOL_HTTP = 0,
     PROTOCOL_SIGNALING,
@@ -52,6 +58,8 @@ static int callback_signaling(struct lws *wsi, enum lws_callback_reasons reason,
 {
     (void)user;
 
+    int viewer_idx = -1;
+
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED: {
             char uri[256];
@@ -66,17 +74,16 @@ static int callback_signaling(struct lws *wsi, enum lws_callback_reasons reason,
                 g_host_ws = wsi;
                 LOG_INFO("signaling: host connected via %s", uri);
             } else if (strstr(uri, "/viewer")) {
-                int found = -1;
                 for (int i = 0; i < MAX_VIEWERS; i++) {
                     if (g_viewer_ws[i] == NULL) {
                         g_viewer_ws[i] = wsi;
                         g_num_viewers++;
-                        found = i;
+                        viewer_idx = i;
                         break;
                     }
                 }
-                if (found >= 0) {
-                    LOG_INFO("signaling: viewer connected slot=%d total=%d", found, g_num_viewers);
+                if (viewer_idx >= 0) {
+                    LOG_INFO("signaling: viewer connected slot=%d total=%d", viewer_idx, g_num_viewers);
                 } else {
                     LOG_WARN("signaling: max viewers (%d) reached, rejecting", MAX_VIEWERS);
                 }
@@ -86,16 +93,21 @@ static int callback_signaling(struct lws *wsi, enum lws_callback_reasons reason,
                     if (g_viewer_ws[i] == NULL) {
                         g_viewer_ws[i] = wsi;
                         g_num_viewers++;
+                        viewer_idx = i;
                         break;
                     }
                 }
             }
             pthread_mutex_unlock(&g_ws_lock);
+
+            if (viewer_idx >= 0 && g_viewer_cb)
+                g_viewer_cb(viewer_idx, 1, g_viewer_cb_ud);
             break;
         }
 
         case LWS_CALLBACK_CLOSED: {
             pthread_mutex_lock(&g_ws_lock);
+            int closed_idx = -1;
             if (wsi == g_host_ws) {
                 g_host_ws = NULL;
                 LOG_INFO("signaling: host disconnected");
@@ -104,12 +116,16 @@ static int callback_signaling(struct lws *wsi, enum lws_callback_reasons reason,
                     if (g_viewer_ws[i] == wsi) {
                         g_viewer_ws[i] = NULL;
                         g_num_viewers--;
+                        closed_idx = i;
                         LOG_DEBUG("signaling: viewer_%d disconnected (remaining=%d)", i, g_num_viewers);
                         break;
                     }
                 }
             }
             pthread_mutex_unlock(&g_ws_lock);
+
+            if (closed_idx >= 0 && g_viewer_cb)
+                g_viewer_cb(closed_idx, 0, g_viewer_cb_ud);
             break;
         }
 
@@ -150,6 +166,9 @@ static int callback_signaling(struct lws *wsi, enum lws_callback_reasons reason,
             }
             pthread_mutex_unlock(&g_ws_lock);
 
+            if (g_msg_cb && wsi != g_host_ws)
+                g_msg_cb(ev.data.signaling.viewer_id, rx_buf, g_msg_cb_ud);
+
             fire_event(&ev);
             break;
         }
@@ -189,6 +208,18 @@ static void *signaling_thread(void *arg)
     }
     LOG_DEBUG("signaling_thread: exiting");
     return NULL;
+}
+
+void signaling_set_internal_callbacks(
+    void (*msg_cb)(const char *viewer_id, const char *data, void *ud),
+    void *msg_ud,
+    void (*viewer_cb)(int viewer_idx, int joined, void *ud),
+    void *viewer_ud)
+{
+    g_msg_cb = msg_cb;
+    g_msg_cb_ud = msg_ud;
+    g_viewer_cb = viewer_cb;
+    g_viewer_cb_ud = viewer_ud;
 }
 
 int signaling_init(const nearcade_config *config)
@@ -248,6 +279,21 @@ void signaling_get_url(char *buf, size_t buf_size)
 {
     snprintf(buf, buf_size, "ws://%s:%d", g_state.lan_ip, g_port);
     LOG_TRACE("signaling_get_url: %s", buf);
+}
+
+int signaling_send_to_viewer(const char *viewer_id, const char *data)
+{
+    if (!viewer_id || !data) return -1;
+    pthread_mutex_lock(&g_ws_lock);
+    struct lws *target = viewer_ws_by_id(viewer_id);
+    int ret = -1;
+    if (target) {
+        ret = send_to_lws(target, data);
+    } else {
+        LOG_WARN("signaling_send_to_viewer: viewer '%s' not connected", viewer_id);
+    }
+    pthread_mutex_unlock(&g_ws_lock);
+    return ret;
 }
 
 static int send_to_lws(struct lws *wsi, const char *data)

@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <queue>
@@ -36,8 +37,12 @@ public:
     static NearcadeSDK *get_singleton() { return singleton; }
 
     Dictionary init(const Dictionary &config);
+    int start_streaming();
+    int stop_streaming();
     int start_capture();
     int stop_capture();
+    int send_h264(const PackedByteArray &data, int64_t timestamp_us);
+    int send_frame(const PackedByteArray &data, int width, int height, int fmt, int64_t timestamp_us);
     void shutdown();
 
     int submit_gamepad(const Dictionary &packet);

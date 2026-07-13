@@ -80,6 +80,7 @@ typedef struct {
     nearcade_config config;
     atomic_int      running;
     atomic_int      capturing;
+    atomic_int      streaming;
     viewer_info     viewers[MAX_VIEWERS];
     int             num_viewers;
     slot_manager    slots;
@@ -111,6 +112,10 @@ void capture_shutdown(void);
 
 int signaling_init(const nearcade_config *config);
 void signaling_shutdown(void);
+void signaling_set_internal_callbacks(
+    void (*msg_cb)(const char *viewer_id, const char *data, void *ud), void *msg_ud,
+    void (*viewer_cb)(int viewer_idx, int joined, void *ud), void *viewer_ud);
+int signaling_send_to_viewer(const char *viewer_id, const char *data);
 int signaling_send_offer(const char *viewer_id, const char *sdp);
 int signaling_send_answer(const char *viewer_id, const char *sdp);
 int signaling_send_ice(const char *viewer_id, const char *candidate);

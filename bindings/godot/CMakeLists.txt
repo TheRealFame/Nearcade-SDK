@@ -77,5 +77,5 @@ else()
 endif()
 
 set_target_properties(nearcade_godot PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/demo/bin"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/demo/addons/nearcade/bin"
 )

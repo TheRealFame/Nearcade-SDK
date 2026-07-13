@@ -63,8 +63,8 @@ func _process(delta):
             video_timer = 0.0
 
 
-func _on_viewer_joined(viewer_id, name):
-    log_msg("[signal] Viewer joined: " + viewer_id + " (" + name + ")")
+func _on_viewer_joined(viewer_id, viewer_name):
+    log_msg("[signal] Viewer joined: " + viewer_id + " (" + viewer_name + ")")
 
 
 func _on_viewer_left(viewer_id):

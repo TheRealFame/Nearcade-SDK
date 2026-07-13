@@ -138,7 +138,7 @@ jobs:
           mkdir -p "${addon_dir}/bin"
 
           # Copy .gdextension manifest
-          cp bindings/godot/nearcade.gdextension "${addon_dir}/"
+          cp bindings/godot/demo/addons/nearcade/nearcade.gdextension "${addon_dir}/"
 
           # Merge GDExtension binaries + SDK libs from all platforms
           for dir in sdk-*/; do

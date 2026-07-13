@@ -1,6 +1,6 @@
 build/
 .godot/
-bindings/godot/demo/bin/
+bindings/godot/demo/addons/nearcade/bin/
 *.o
 *.obj
 *.so
@@ -10,3 +10,4 @@ bindings/godot/demo/bin/
 *.lib
 __pycache__/
 *.pyc
+*.uid

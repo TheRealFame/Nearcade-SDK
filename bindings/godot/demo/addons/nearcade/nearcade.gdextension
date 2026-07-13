@@ -1,0 +1,8 @@
+[configuration]
+entry_symbol = "nearcade_godot_init"
+compatibility_minimum = 4.6
+
+[libraries]
+linux.x86_64 = "res://addons/nearcade/bin/libnearcade_godot.linux.x86_64.so"
+windows.x86_64 = "res://addons/nearcade/bin/nearcade_godot.windows.x86_64.dll"
+macos = "res://addons/nearcade/bin/libnearcade_godot.macos.dylib"

@@ -1,9 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://demo_main"]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1"]
 
 [node name="Main" type="Control"]
-layout_mode = 3
 anchors_preset = 0
 offset_right = 800.0
 offset_bottom = 600.0
@@ -46,23 +45,19 @@ layout_mode = 2
 
 [node name="StartBtn" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
-text = "Start Capture"
-button_down = Callable(self, "_on_start_pressed")
+text = "Start Streaming"
 
 [node name="StopBtn" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
-text = "Stop Capture"
-button_down = Callable(self, "_on_stop_pressed")
+text = "Stop"
 
 [node name="SubmitBtn" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 text = "Submit Gamepad"
-button_down = Callable(self, "_on_submit_pressed")
 
 [node name="DisconnectBtn" type="Button" parent="VBoxContainer/HBoxContainer"]
 layout_mode = 2
 text = "Disconnect"
-button_down = Callable(self, "_on_disconnect_pressed")
 
 [node name="HSeparator2" type="HSeparator" parent="VBoxContainer"]
 layout_mode = 2

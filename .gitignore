@@ -1,4 +1,5 @@
 build/
+.godot/
 bindings/godot/demo/bin/
 *.o
 *.obj

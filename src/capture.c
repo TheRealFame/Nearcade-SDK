@@ -1,10 +1,18 @@
+#ifdef _WIN32
+#include "nearcade_internal.h"
+#include <stdio.h>
+
+int capture_init(const nearcade_config *config) { (void)config; return NEARCADE_OK; }
+int capture_start(void) { LOG_ERROR("capture_start: not implemented on Windows"); return NEARCADE_ERR_CAPTURE; }
+int capture_stop(void) { return NEARCADE_OK; }
+void capture_shutdown(void) {}
+#else
 #include "nearcade_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
-#include <pthread.h>
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -67,7 +75,6 @@ int capture_start(void)
     }
 
     if (pid == 0) {
-        /* CHILD PROCESS */
         char res[32];
         snprintf(res, sizeof(res), "%dx%d", cfg->screen_width, cfg->screen_height);
         char br[32];
@@ -83,7 +90,6 @@ int capture_start(void)
         LOG_DEBUG("capture_start: child configuring FFmpeg capture: res=%s fps=%s bitrate=%s gop=%s vaapi=%d",
                   res, fps_str, br, gop_str, use_vaapi);
 
-        /* Redirect stderr to /dev/null so it doesn't pollute the SDK's stderr */
         int devnull = open("/dev/null", O_WRONLY);
         if (devnull >= 0) {
             dup2(devnull, STDERR_FILENO);
@@ -128,27 +134,17 @@ int capture_start(void)
                    NULL);
         }
 
-        /* If we get here, execlp failed */
         LOG_ERROR("capture_start: execlp(ffmpeg) failed: %s", strerror(errno));
         _exit(1);
     }
 
-    /* PARENT */
     g_ff.pid = pid;
     g_ff.active = 1;
     LOG_INFO("capture_start: FFmpeg started (pid=%d)", pid);
     return NEARCADE_OK;
 
-#else
-    LOG_ERROR("capture_start: not implemented on platform=%s", 
-#if _WIN32
-              "windows"
 #elif __APPLE__
-              "macos"
-#else
-              "unknown"
-#endif
-    );
+    LOG_ERROR("capture_start: not implemented on macOS");
     return NEARCADE_ERR_CAPTURE;
 #endif
 }
@@ -160,12 +156,10 @@ int capture_stop(void)
         LOG_DEBUG("capture_stop: sending SIGTERM to pid=%d", g_ff.pid);
         kill(g_ff.pid, SIGTERM);
 
-        /* Reap child to avoid zombie */
         int status = 0;
         pid_t ret = waitpid(g_ff.pid, &status, WNOHANG);
         LOG_DEBUG("capture_stop: waitpid returned %d (status=%d)", (int)ret, status);
         if (ret == 0) {
-            /* Child still running, give it a moment then force kill */
             usleep(100000);
             ret = waitpid(g_ff.pid, &status, WNOHANG);
             if (ret == 0) {
@@ -189,3 +183,4 @@ void capture_shutdown(void)
     LOG_TRACE("capture_shutdown: entering");
     capture_stop();
 }
+#endif

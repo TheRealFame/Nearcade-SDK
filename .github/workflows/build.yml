@@ -52,12 +52,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install libwebsockets
 
-      - name: Install deps (Windows)
-        if: runner.os == 'Windows'
-        run: vcpkg install pthreads:x64-windows
-
       - name: Configure SDK
-        run: cmake -B build_sdk -DNEARCADE_BUILD_SHARED=ON -DNEARCADE_BUILD_SIGNALING=${{ matrix.signaling }} -DNEARCADE_BUILD_WEBRTC=ON -DNEARCADE_BUILD_TESTS=OFF "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" -DCMAKE_BUILD_TYPE=Release ${{ runner.os == 'Windows' && '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake' || '' }}
+        run: cmake -B build_sdk -DNEARCADE_BUILD_SHARED=ON -DNEARCADE_BUILD_SIGNALING=${{ matrix.signaling }} -DNEARCADE_BUILD_WEBRTC=ON -DNEARCADE_BUILD_TESTS=OFF "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build SDK
         run: cmake --build build_sdk --config Release -j4

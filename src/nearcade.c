@@ -4,11 +4,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
+#pragma comment(lib, "iphlpapi.lib")
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <net/if.h>
 #include <ifaddrs.h>
+#endif
 
 nearcade_state g_state;
 int g_loglevel = NEARCADE_LOG_NONE;
@@ -39,6 +48,38 @@ static void generate_pin(char *buf, size_t len)
 
 static void get_lan_ip(char *buf, size_t len)
 {
+#ifdef _WIN32
+    PIP_ADAPTER_ADDRESSES addrs = NULL, aa;
+    ULONG sz = 0;
+    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER, NULL, NULL, &sz) != ERROR_BUFFER_OVERFLOW) {
+        LOG_WARN("get_lan_ip: GetAdaptersAddresses size query failed");
+        strncpy(buf, "127.0.0.1", len - 1);
+        return;
+    }
+    addrs = (PIP_ADAPTER_ADDRESSES)malloc(sz);
+    if (!addrs) {
+        LOG_WARN("get_lan_ip: malloc failed");
+        strncpy(buf, "127.0.0.1", len - 1);
+        return;
+    }
+    int found = 0;
+    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER, NULL, addrs, &sz) == NO_ERROR) {
+        for (aa = addrs; aa; aa = aa->Next) {
+            if (aa->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+            PIP_ADAPTER_UNICAST_ADDRESS ua = aa->FirstUnicastAddress;
+            if (!ua) continue;
+            struct sockaddr_in *sa = (struct sockaddr_in*)ua->Address.lpSockaddr;
+            inet_ntop(AF_INET, &sa->sin_addr, buf, (socklen_t)len);
+            found = 1;
+            break;
+        }
+    }
+    free(addrs);
+    if (!found) {
+        LOG_WARN("get_lan_ip: no non-loopback IPv4 interface found, using 127.0.0.1");
+        strncpy(buf, "127.0.0.1", len - 1);
+    }
+#else
     struct ifaddrs *ifaddr, *ifa;
     if (getifaddrs(&ifaddr) < 0) {
         LOG_WARN("getifaddrs failed, falling back to 127.0.0.1");
@@ -59,6 +100,7 @@ static void get_lan_ip(char *buf, size_t len)
         strncpy(buf, "127.0.0.1", len - 1);
     }
     freeifaddrs(ifaddr);
+#endif
 }
 
 /* ── WebRTC integration callbacks ──────────────────────────────────────── */
@@ -133,6 +175,13 @@ static void webrtc_viewer_state(int viewer_idx, int connected, void *userdata)
 
 int nearcade_init(const nearcade_config *config)
 {
+#ifdef _WIN32
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        LOG_ERROR("nearcade_init: WSAStartup failed");
+        return NEARCADE_ERR_NETWORK;
+    }
+#endif
     memset(&g_state, 0, sizeof(g_state));
     g_loglevel = log_level_from_env();
     LOG_INFO("Nearcade SDK v%d.%d.%d initializing, log_level=%d",
@@ -156,12 +205,12 @@ int nearcade_init(const nearcade_config *config)
         g_state.config.screen_height = 1080;
     }
 
-    if (pthread_mutex_init(&g_state.viewer_lock, NULL) != 0) {
+    if (nearcade_mutex_init(&g_state.viewer_lock) != 0) {
         LOG_ERROR("nearcade_init: viewer_lock init failed");
         return NEARCADE_ERR_INIT;
     }
-    if (pthread_mutex_init(&g_state.slots.lock, NULL) != 0) {
-        pthread_mutex_destroy(&g_state.viewer_lock);
+    if (nearcade_mutex_init(&g_state.slots.lock) != 0) {
+        nearcade_mutex_destroy(&g_state.viewer_lock);
         return NEARCADE_ERR_INIT;
     }
 
@@ -171,8 +220,8 @@ int nearcade_init(const nearcade_config *config)
     int rc = input_init(&g_state.config);
     if (rc != NEARCADE_OK) {
         LOG_ERROR("nearcade_init: input_init failed: %d", rc);
-        pthread_mutex_destroy(&g_state.slots.lock);
-        pthread_mutex_destroy(&g_state.viewer_lock);
+        nearcade_mutex_destroy(&g_state.slots.lock);
+        nearcade_mutex_destroy(&g_state.viewer_lock);
         return NEARCADE_ERR_INIT;
     }
 
@@ -180,8 +229,8 @@ int nearcade_init(const nearcade_config *config)
     if (rc != NEARCADE_OK) {
         LOG_ERROR("nearcade_init: capture_init failed: %d", rc);
         input_shutdown();
-        pthread_mutex_destroy(&g_state.slots.lock);
-        pthread_mutex_destroy(&g_state.viewer_lock);
+        nearcade_mutex_destroy(&g_state.slots.lock);
+        nearcade_mutex_destroy(&g_state.viewer_lock);
         return NEARCADE_ERR_INIT;
     }
 
@@ -190,8 +239,8 @@ int nearcade_init(const nearcade_config *config)
         LOG_ERROR("nearcade_init: webrtc_init failed: %d", rc);
         capture_shutdown();
         input_shutdown();
-        pthread_mutex_destroy(&g_state.slots.lock);
-        pthread_mutex_destroy(&g_state.viewer_lock);
+        nearcade_mutex_destroy(&g_state.slots.lock);
+        nearcade_mutex_destroy(&g_state.viewer_lock);
         return NEARCADE_ERR_INIT;
     }
 
@@ -211,8 +260,8 @@ int nearcade_init(const nearcade_config *config)
         webrtc_shutdown();
         capture_shutdown();
         input_shutdown();
-        pthread_mutex_destroy(&g_state.slots.lock);
-        pthread_mutex_destroy(&g_state.viewer_lock);
+        nearcade_mutex_destroy(&g_state.slots.lock);
+        nearcade_mutex_destroy(&g_state.viewer_lock);
         return NEARCADE_ERR_INIT;
     }
 #else
@@ -307,8 +356,11 @@ void nearcade_shutdown(void)
     signaling_shutdown();
 #endif
 
-    pthread_mutex_destroy(&g_state.viewer_lock);
-    pthread_mutex_destroy(&g_state.slots.lock);
+    nearcade_mutex_destroy(&g_state.viewer_lock);
+    nearcade_mutex_destroy(&g_state.slots.lock);
+#ifdef _WIN32
+    WSACleanup();
+#endif
     LOG_INFO("Nearcade shut down");
 }
 
@@ -379,7 +431,7 @@ int nearcade_disconnect_viewer(const char *viewer_id)
 {
     if (!viewer_id) return NEARCADE_ERR_INVALID_ARG;
     LOG_DEBUG("nearcade_disconnect_viewer: viewer=%s", viewer_id);
-    pthread_mutex_lock(&g_state.viewer_lock);
+    nearcade_mutex_lock(&g_state.viewer_lock);
     for (int i = 0; i < MAX_VIEWERS; i++) {
         if (g_state.viewers[i].active &&
             strcmp(g_state.viewers[i].id, viewer_id) == 0) {
@@ -391,39 +443,39 @@ int nearcade_disconnect_viewer(const char *viewer_id)
             break;
         }
     }
-    pthread_mutex_unlock(&g_state.viewer_lock);
+    nearcade_mutex_unlock(&g_state.viewer_lock);
     return NEARCADE_OK;
 }
 
 int nearcade_set_viewer_input_mode(const char *viewer_id, nearcade_input_mode mode)
 {
     if (!viewer_id) return NEARCADE_ERR_INVALID_ARG;
-    pthread_mutex_lock(&g_state.viewer_lock);
+    nearcade_mutex_lock(&g_state.viewer_lock);
     for (int i = 0; i < MAX_VIEWERS; i++) {
         if (g_state.viewers[i].active &&
             strcmp(g_state.viewers[i].id, viewer_id) == 0) {
             g_state.viewers[i].mode = mode;
-            pthread_mutex_unlock(&g_state.viewer_lock);
+            nearcade_mutex_unlock(&g_state.viewer_lock);
             return NEARCADE_OK;
         }
     }
-    pthread_mutex_unlock(&g_state.viewer_lock);
+    nearcade_mutex_unlock(&g_state.viewer_lock);
     return NEARCADE_ERR_INVALID_ARG;
 }
 
 int nearcade_set_controller_type(const char *viewer_id, nearcade_ctrl_type ctrl)
 {
     if (!viewer_id) return NEARCADE_ERR_INVALID_ARG;
-    pthread_mutex_lock(&g_state.viewer_lock);
+    nearcade_mutex_lock(&g_state.viewer_lock);
     for (int i = 0; i < MAX_VIEWERS; i++) {
         if (g_state.viewers[i].active &&
             strcmp(g_state.viewers[i].id, viewer_id) == 0) {
             g_state.viewers[i].ctrl_type = ctrl;
-            pthread_mutex_unlock(&g_state.viewer_lock);
+            nearcade_mutex_unlock(&g_state.viewer_lock);
             return NEARCADE_OK;
         }
     }
-    pthread_mutex_unlock(&g_state.viewer_lock);
+    nearcade_mutex_unlock(&g_state.viewer_lock);
     return NEARCADE_ERR_INVALID_ARG;
 }
 

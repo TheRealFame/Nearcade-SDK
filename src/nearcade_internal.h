@@ -2,7 +2,7 @@
 #define NEARCADE_INTERNAL_H
 
 #include "nearcade.h"
-#include <pthread.h>
+#include "thread_compat.h"
 #include <stdatomic.h>
 #include <string.h>
 #include <stdio.h>
@@ -73,7 +73,7 @@ typedef struct viewer_info {
 typedef struct {
     int slot_map[MAX_SLOTS];
     char slot_viewers[MAX_SLOTS][NEARCADE_VIEWER_ID_LEN];
-    pthread_mutex_t lock;
+    nearcade_mutex_t lock;
 } slot_manager;
 
 typedef struct {
@@ -86,10 +86,10 @@ typedef struct {
     slot_manager    slots;
     nearcade_event_callback event_cb;
     void           *event_cb_userdata;
-    pthread_mutex_t  viewer_lock;
+    nearcade_mutex_t  viewer_lock;
     char            pin[8];
     char            lan_ip[64];
-    pthread_t       event_thread;
+    nearcade_thread_t event_thread;
 } nearcade_state;
 
 extern nearcade_state g_state;

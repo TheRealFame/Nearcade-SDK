@@ -4,11 +4,13 @@ Standalone C ABI shared library for hosting WebRTC peer-to-peer video/audio stre
 
 ## Features
 
-- Host a WebRTC video/audio stream from a capture source
+- **P2P WebRTC** — media and data flow directly between host and viewer (no relay server)
+- Lightweight **WebSocket signaling server** for SDP/ICE exchange (optional, requires libwebsockets)
+- Host a video/audio stream from a capture source (FFmpeg on Linux)
 - Relay gamepad input from multiple remote viewers back to the host
 - Flat C API (`extern "C"`): `nearcade_init()`, `nearcade_start_capture()`, etc.
-- Lightweight WebSocket signaling server (optional, requires libwebsockets)
 - Platform backends: Linux (uinput), Windows (ViGEmBus stub), macOS (stub)
+- **No tunnels** — the SDK does not bundle cloudflared/zrok/VPN. The user provides their own connectivity (LAN, Tailscale, port-forward, or their own tunnel)
 - Runtime log control via `NEARCADE_LOG_LEVEL` env var (trace/debug/info/warn/error/none)
 
 ## Engine Integrations
@@ -36,6 +38,24 @@ NEARCADE_LOG_LEVEL=debug ctest --test-dir build
 | `-DNEARCADE_BUILD_SHARED=ON` | ON | Build shared library (.so/.dylib/.dll) |
 | `-DNEARCADE_BUILD_SIGNALING=ON` | ON | Embedded WebSocket signaling (requires libwebsockets) |
 | `-DNEARCADE_BUILD_TESTS=ON` | ON | Build unit tests |
+
+## How it Works
+
+```
+HOST (game/app)                        VIEWER (browser)
+      │                                      │
+      │── WebSocket (signaling) ────────────→│  SDP offer/answer + ICE candidates
+      │←─────────────────────────────────────│  (handled by embedded signaling server)
+      │                                      │
+      │── WebRTC P2P (direct) ─────────────→│  Video/audio stream
+      │←─────────────────────────────────────│  Gamepad/KBM input (16-byte packets)
+      │                                      │
+      ▼                                      ▼
+  uinput virtual gamepad              Browser Gamepad API
+  (Linux) / ViGEmBus (Win)            or keyboard/mouse
+```
+
+The WebSocket signaling server only handles the initial handshake. After that, **all media and input flows P2P** — no relay server needed. The SDK does not bundle tunnels; users provide their own connectivity for WAN play (Tailscale, port-forward, cloudflared, etc.).
 
 ## API
 

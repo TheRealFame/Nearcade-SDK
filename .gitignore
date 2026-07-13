@@ -1,0 +1,11 @@
+build/
+bindings/godot/demo/bin/
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+__pycache__/
+*.pyc

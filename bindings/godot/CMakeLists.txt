@@ -22,16 +22,21 @@ endif()
 # ── libnearcade (shared library) ───────────────────────────────────────────
 # The GDExtension links against libnearcade.so. At runtime, Godot's dynamic
 # linker resolves libnearcade + its transitive deps (libdatachannel, etc.).
-find_library(NEARCADE_LIBRARIES
-    NAMES nearcade
-    PATHS ${CMAKE_PREFIX_PATH} ${CMAKE_SOURCE_DIR}/../../build
-    NO_DEFAULT_PATH
-)
-find_path(NEARCADE_INCLUDE_DIR
-    NAMES nearcade.h
-    PATHS ${CMAKE_SOURCE_DIR}/../../include
-    NO_DEFAULT_PATH
-)
+#
+# When built as a subdirectory from root CMake, NEARCADE_LIBRARIES and
+# NEARCADE_INCLUDE_DIR are pre-set. Otherwise, find them automatically.
+if(NOT NEARCADE_LIBRARIES OR NOT NEARCADE_INCLUDE_DIR)
+    find_library(NEARCADE_LIBRARIES
+        NAMES nearcade
+        PATHS ${CMAKE_PREFIX_PATH} ${CMAKE_SOURCE_DIR}/../../build
+        NO_DEFAULT_PATH
+    )
+    find_path(NEARCADE_INCLUDE_DIR
+        NAMES nearcade.h
+        PATHS ${CMAKE_SOURCE_DIR}/../../include
+        NO_DEFAULT_PATH
+    )
+endif()
 
 if(NOT NEARCADE_LIBRARIES OR NOT NEARCADE_INCLUDE_DIR)
     message(FATAL_ERROR "libnearcade not found. Build the SDK first: "

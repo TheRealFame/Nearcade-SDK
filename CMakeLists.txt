@@ -8,6 +8,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(NEARCADE_BUILD_SHARED "Build shared library" ON)
 option(NEARCADE_BUILD_SIGNALING "Build embedded WebSocket signaling" ON)
 option(NEARCADE_BUILD_WEBRTC   "Build embedded WebRTC via libdatachannel" ON)
+option(NEARCADE_BUILD_GODOT    "Build Godot 4.6 GDExtension" OFF)
 option(NEARCADE_BUILD_TESTS    "Build tests" ON)
 
 find_package(Threads REQUIRED)
@@ -129,6 +130,18 @@ if(NEARCADE_BUILD_SHARED)
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION bin
     )
+endif()
+
+# ── Godot GDExtension ───────────────────────────────────────────────────────────
+if(NEARCADE_BUILD_GODOT AND NEARCADE_BUILD_SHARED)
+    if(WIN32)
+        set(_nearcade_lib "${CMAKE_BINARY_DIR}/nearcade.lib")
+    else()
+        set(_nearcade_lib "${CMAKE_BINARY_DIR}/libnearcade${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    endif()
+    set(NEARCADE_LIBRARIES "${_nearcade_lib}")
+    set(NEARCADE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
+    add_subdirectory(bindings/godot)
 endif()
 
 # ── Tests ───────────────────────────────────────────────────────────────────────

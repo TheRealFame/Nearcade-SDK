@@ -3,7 +3,7 @@
 
 #include "nearcade.h"
 #include "thread_compat.h"
-#include <stdatomic.h>
+#include "atomic_compat.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,9 +78,9 @@ typedef struct {
 
 typedef struct {
     nearcade_config config;
-    atomic_int      running;
-    atomic_int      capturing;
-    atomic_int      streaming;
+    nearcade_atomic_int running;
+    nearcade_atomic_int capturing;
+    nearcade_atomic_int streaming;
     viewer_info     viewers[MAX_VIEWERS];
     int             num_viewers;
     slot_manager    slots;

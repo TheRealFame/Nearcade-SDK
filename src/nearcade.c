@@ -268,7 +268,7 @@ int nearcade_init(const nearcade_config *config)
     LOG_INFO("nearcade_init: signaling disabled (NEARCADE_HAS_SIGNALING not set)");
 #endif
 
-    atomic_store(&g_state.running, 1);
+    nearcade_atomic_store(&g_state.running, 1);
     LOG_INFO("Nearcade v%d.%d.%d initialized on port %d  LAN: %s  PIN: %s",
              NEARCADE_VERSION_MAJOR, NEARCADE_VERSION_MINOR,
              NEARCADE_VERSION_PATCH, g_state.config.port,
@@ -279,7 +279,7 @@ int nearcade_init(const nearcade_config *config)
 int nearcade_start_streaming(void)
 {
     LOG_INFO("nearcade_start_streaming: accepting viewer connections");
-    atomic_store(&g_state.streaming, 1);
+    nearcade_atomic_store(&g_state.streaming, 1);
 
     nearcade_event ev;
     memset(&ev, 0, sizeof(ev));
@@ -293,7 +293,7 @@ int nearcade_start_streaming(void)
 int nearcade_stop_streaming(void)
 {
     LOG_INFO("nearcade_stop_streaming: stopping");
-    atomic_store(&g_state.streaming, 0);
+    nearcade_atomic_store(&g_state.streaming, 0);
     return NEARCADE_OK;
 }
 
@@ -313,13 +313,13 @@ int nearcade_send_frame(const uint8_t *data, int width, int height,
 int nearcade_start_capture(void)
 {
     LOG_TRACE("nearcade_start_capture: entering");
-    if (atomic_load(&g_state.capturing)) {
+    if (nearcade_atomic_load(&g_state.capturing)) {
         LOG_DEBUG("nearcade_start_capture: already capturing");
         return NEARCADE_OK;
     }
     int ret = capture_start();
     if (ret == NEARCADE_OK) {
-        atomic_store(&g_state.capturing, 1);
+        nearcade_atomic_store(&g_state.capturing, 1);
         LOG_INFO("legacy capture started");
     }
     return ret;
@@ -328,9 +328,9 @@ int nearcade_start_capture(void)
 int nearcade_stop_capture(void)
 {
     LOG_TRACE("nearcade_stop_capture: entering");
-    if (!atomic_load(&g_state.capturing)) return NEARCADE_OK;
+    if (!nearcade_atomic_load(&g_state.capturing)) return NEARCADE_OK;
     capture_stop();
-    atomic_store(&g_state.capturing, 0);
+    nearcade_atomic_store(&g_state.capturing, 0);
     LOG_INFO("legacy capture stopped");
     return NEARCADE_OK;
 }
@@ -344,10 +344,10 @@ int nearcade_poll_events(int timeout_ms)
 void nearcade_shutdown(void)
 {
     LOG_INFO("nearcade_shutdown: shutting down...");
-    if (!atomic_load(&g_state.running)) return;
-    atomic_store(&g_state.running, 0);
-    atomic_store(&g_state.capturing, 0);
-    atomic_store(&g_state.streaming, 0);
+    if (!nearcade_atomic_load(&g_state.running)) return;
+    nearcade_atomic_store(&g_state.running, 0);
+    nearcade_atomic_store(&g_state.capturing, 0);
+    nearcade_atomic_store(&g_state.streaming, 0);
 
     webrtc_shutdown();
     capture_shutdown();

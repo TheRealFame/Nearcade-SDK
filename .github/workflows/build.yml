@@ -152,7 +152,14 @@ jobs:
 
           zip -r "nearcade-godot-v${SDK_VERSION}.zip" "nearcade-godot-v${SDK_VERSION}"
 
-      - name: Upload release assets
+      - name: Upload zips as workflow artifacts (manual builds)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nearcade-release-zips
+          path: nearcade-*.zip
+
+      - name: Upload to GitHub Releases tab (release trigger only)
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |

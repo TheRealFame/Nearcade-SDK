@@ -53,7 +53,7 @@ jobs:
         run: brew install libwebsockets
 
       - name: Configure SDK
-        run: cmake -B build_sdk -DNEARCADE_BUILD_SHARED=ON -DNEARCADE_BUILD_SIGNALING=${{ matrix.signaling }} -DNEARCADE_BUILD_WEBRTC=ON -DNEARCADE_BUILD_TESTS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build_sdk -DNEARCADE_BUILD_SHARED=ON -DNEARCADE_BUILD_SIGNALING=${{ matrix.signaling }} -DNEARCADE_BUILD_WEBRTC=ON -DNEARCADE_BUILD_TESTS=OFF "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build SDK
         run: cmake --build build_sdk --config Release -j4
